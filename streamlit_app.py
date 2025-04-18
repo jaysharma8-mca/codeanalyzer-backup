@@ -6,6 +6,7 @@ import zipfile
 import sys
 import pandas as pd
 import requests
+import socket
 
 # ===== Load GitHub secrets for cloud deployment =====
 if "GITHUB_TOKEN" in st.secrets:
@@ -20,6 +21,19 @@ from codeanalyzer_backup import main, WINDOWS_BACKUP_BASE
 
 # Set Streamlit page config
 st.set_page_config(page_title="CodeAnalyzer Backup Dashboard", layout="wide")
+
+# ===== VM Reachability Check =====
+def is_vm_reachable(host, port, timeout=3):
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except Exception:
+        return False
+
+VM_HOST = "7.tcp.eu.ngrok.io"
+VM_PORT = 11337
+
+vm_reachable = is_vm_reachable(VM_HOST, VM_PORT)
 
 # Sidebar Navigation with Logo
 st.sidebar.markdown("""
@@ -83,12 +97,20 @@ def get_backup_size_trend_from_github():
     })
 
 # ======================== Pages ========================
+
 if page == "📊 Overview":
     st.markdown("<h1 style='text-align: center;'>🛡️ CodeAnalyzer Backup Utility</h1>", unsafe_allow_html=True)
     st.markdown("---")
+
+    st.subheader("📶 VM Connection Status")
+    if vm_reachable:
+        st.success("🟢 VM is reachable.")
+    else:
+        st.error("🔴 VM is unreachable. Backup is disabled.")
+
     st.subheader("⚙️ Run Backup")
     send_email_flag = st.checkbox("Send Email Notification", value=True)
-    if st.button("Run Backup Now"):
+    if st.button("Run Backup Now", disabled=not vm_reachable):
         st.markdown("<div style='margin-top: 25px;'></div>", unsafe_allow_html=True)
         with st.spinner("Running backup... this may take a few seconds..."):
             result = main(send_email_flag=send_email_flag)
