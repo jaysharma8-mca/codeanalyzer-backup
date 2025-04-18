@@ -1,0 +1,6 @@
+streamlit
+paramiko
+scp
+pandas
+plotly
+python-dotenv
