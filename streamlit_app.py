@@ -26,6 +26,7 @@ st.sidebar.markdown("""
         <img src='https://upload.wikimedia.org/wikipedia/commons/thumb/6/6b/Meetup_Logo.png/512px-Meetup_Logo.png' width='120'/>
     </div>
 """, unsafe_allow_html=True)
+# st.sidebar.title("Navigation")
 page = st.sidebar.radio(" ", ["📊 Overview", "📁 Latest Backup Info", "📂 Contents of Latest Backup"])
 
 # Define absolute path to log file
@@ -59,10 +60,9 @@ def get_backup_size_trend():
     for b in backups:
         ts_raw = os.path.basename(b).replace("codeanalyzer_", "").replace(".zip", "")
         try:
-            dt = datetime.strptime(ts_raw, "%Y-%m-%d_%I-%M%p")
-            date_key = dt.date().strftime("%Y-%m-%d")
+            dt = datetime.strptime(ts_raw, "%Y-%m-%d_%I-%M%p").date()  # Group by date only
             size_kb = round(os.path.getsize(b) / 1024, 2)
-            data[date_key] = data.get(date_key, 0) + size_kb
+            data[dt] = data.get(dt, 0) + size_kb
         except:
             continue
     return pd.DataFrame({"Date": list(data.keys()), "Total Size (KB)": list(data.values())})
@@ -97,12 +97,12 @@ if page == "📊 Overview":
                 trend_df,
                 x="Date",
                 y="Total Size (KB)",
-                orientation="v",
                 title="Daily Backup Size Chart",
                 labels={"Total Size (KB)": "Backup Size (KB)", "Date": "Date"},
                 text="Total Size (KB)"
             )
-            fig.update_layout(yaxis_title="Backup Size (KB)", xaxis_title="Date", height=400)
+            fig.update_traces(textposition='outside')
+            fig.update_layout(xaxis_title="Date", yaxis_title="Backup Size (KB)", height=450)
             st.plotly_chart(fig, use_container_width=True)
         except Exception as e:
             st.warning(f"Chart rendering failed: {e}")
