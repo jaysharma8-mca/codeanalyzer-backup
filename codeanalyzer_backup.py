@@ -56,11 +56,11 @@ def get_windows_folder_size(path):
             total += os.path.getsize(fp)
     return total  # bytes
 
-def format_windows_size(size_in_bytes, linux_size_unit):
-    if linux_size_unit.endswith('K'):
-        return f"{round(size_in_bytes / 1024, 2)} KB"
-    elif linux_size_unit.endswith('M'):
-        return f"{round(size_in_bytes / (1024 * 1024), 2)} MB"
+def format_windows_size_human_readable(size_in_bytes):
+    if size_in_bytes >= 1024 * 1024 * 1024:
+        return f"{round(size_in_bytes / (1024 ** 3), 2)} GB"
+    elif size_in_bytes >= 1024 * 1024:
+        return f"{round(size_in_bytes / (1024 ** 2), 2)} MB"
     else:
         return f"{round(size_in_bytes / 1024, 2)} KB"
 
@@ -128,7 +128,6 @@ PORT = 11337
 USERNAME = 'jay'
 PASSWORD = '5570'
 LINUX_FOLDER = f'/home/{USERNAME}/codeanalyzer/src'
-# WINDOWS_BACKUP_BASE = r'D:\Ansu\codeanalyzer-backups'
 WINDOWS_BACKUP_BASE = os.path.join(os.path.dirname(__file__), "codeanalyzer-backups")
 SENDER_EMAIL = "jaysharma155.cmpica@gmail.com"
 RECEIVER_EMAILS = [
@@ -169,7 +168,7 @@ def main(send_email_flag=True):
 
         linux_size = get_linux_folder_size(HOST, PORT, USERNAME, PASSWORD)
         win_bytes = get_windows_folder_size(os.path.join(destination_path, 'src'))
-        win_size = format_windows_size(win_bytes, linux_size)
+        win_size = format_windows_size_human_readable(win_bytes)
         logging.info(f"Linux folder size  : {linux_size}")
         logging.info(f"Windows folder size: {win_size}")
 
