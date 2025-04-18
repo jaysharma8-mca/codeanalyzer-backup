@@ -79,8 +79,8 @@ def send_email(sender, receivers, password, subject, body, smtp_server, smtp_por
         server.sendmail(sender, receivers, msg.as_string())
 
 # ===== CONFIGURATION =====
-HOST = '6.tcp.eu.ngrok.io'
-PORT = 16090
+HOST = 'localhost'
+PORT = 2222
 USERNAME = 'jay'
 PASSWORD = '5570'
 LINUX_FOLDER = f'/home/{USERNAME}/codeanalyzer/src'
