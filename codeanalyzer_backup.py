@@ -69,7 +69,7 @@ def git_commit_push(repo_path, folder_name, commit_label):
     subprocess.run(["git", "push"], check=True)
 
 def send_email(sender, receivers, password, subject, body, smtp_server, smtp_port):
-    msg = MIMEText(body)
+    msg = MIMEText(body, "html")
     msg["Subject"] = subject
     msg["From"] = sender
     msg["To"] = ", ".join(receivers)
@@ -133,24 +133,25 @@ def main(send_email_flag=True):
         logging.info(f"Linux folder size  : {linux_size}")
         logging.info(f"Windows folder size: {win_size}")
 
+        pretty_timestamp = folder_name.replace("codeanalyzer_", "").replace("_", " ")
+
         if send_email_flag:
             try:
-                email_subject = "CodeAnalyzer Backup Successful"
+                email_subject = "✅ CodeAnalyzer Backup Summary"
                 email_body = f"""
-Hi Jay,
-
-✅ Backup completed successfully on {folder_name[13:]}.
-
-Linux folder size  : {linux_size}
-Windows folder size: {win_size}
-
-Backup location:
-{destination_path}
-
-✅ Folder has also been pushed to GitHub.
-
-Regards,
-Your Backup Script 🤖
+<h2 style='color: #1a73e8;'>✅ CodeAnalyzer Backup Summary</h2>
+<p>Backup completed successfully on <b>{pretty_timestamp}</b>.</p>
+<table border="1" cellpadding="6" style="border-collapse: collapse; font-family: Arial;">
+<tr style='background-color: #f2f2f2;'><th>Source</th><th style='color: purple;'>Size</th></tr>
+<tr><td>Linux Folder</td><td>{linux_size}</td></tr>
+<tr><td>Windows Folder</td><td>{win_size}</td></tr>
+</table>
+<br>
+<b>Backup Location:</b><br>
+<code>{destination_path}</code>
+<br><br>
+<p style='color: purple;'>✅ <b>Backup ZIP has been pushed to GitHub.</b></p>
+<p>Regards,<br>Your Backup Script 🤖</p>
 """
                 send_email(SENDER_EMAIL, RECEIVER_EMAILS, EMAIL_PASSWORD, email_subject, email_body, SMTP_SERVER, SMTP_PORT)
                 logging.info("Email sent successfully.")
