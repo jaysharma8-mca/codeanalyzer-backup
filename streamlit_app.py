@@ -9,6 +9,9 @@ import pandas as pd
 sys.path.append(os.path.dirname(__file__))
 from codeanalyzer_backup import main, WINDOWS_BACKUP_BASE
 
+st.title("✅ Hello from CodeAnalyzer!")
+
+
 # Set Streamlit page config
 st.set_page_config(page_title="CodeAnalyzer Backup Dashboard", layout="wide")
 
