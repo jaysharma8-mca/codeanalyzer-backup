@@ -5,4 +5,5 @@ __pycache__/
 *.pyc
 .DS_Store
 /codeanalyzer-backups/
+.streamlit/secrets.toml
 
