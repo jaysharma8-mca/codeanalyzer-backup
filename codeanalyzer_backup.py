@@ -9,12 +9,13 @@ import logging
 import shutil
 import base64
 import requests
-import json
+from zoneinfo import ZoneInfo  # NEW for timezone support
 
 # ===== UTILITY FUNCTIONS =====
 
 def generate_timestamped_folder_name():
-    return f"codeanalyzer_{datetime.datetime.now().strftime('%Y-%m-%d_%I-%M%p')}"
+    local_time = datetime.datetime.now(ZoneInfo("Europe/London"))  # CHANGE TIMEZONE HERE IF NEEDED
+    return f"codeanalyzer_{local_time.strftime('%Y-%m-%d_%I-%M%p')}"
 
 def create_destination_folder(base_path, folder_name):
     full_path = os.path.join(base_path, folder_name)
@@ -62,8 +63,6 @@ def format_windows_size(size_in_bytes, linux_size_unit):
         return f"{round(size_in_bytes / 1024, 2)} KB"
     elif linux_size_unit.endswith('M'):
         return f"{round(size_in_bytes / (1024 * 1024), 2)} MB"
-    elif linux_size_unit.endswith('G'):
-        return f"{round(size_in_bytes / (1024 * 1024 * 1024), 2)} GB"
     else:
         return f"{round(size_in_bytes / 1024, 2)} KB"
 
@@ -99,7 +98,8 @@ def upload_zip_to_github(zip_path):
     with open(zip_path, "rb") as f:
         content = base64.b64encode(f.read()).decode("utf-8")
 
-    commit_message = f"Backup on {datetime.datetime.now().strftime('%Y-%m-%d %I-%M%p')}"
+    now = datetime.datetime.now(ZoneInfo("Europe/London"))  # Ensure consistent timestamp
+    commit_message = f"Backup on {now.strftime('%Y-%m-%d %I-%M%p')}"
     get_response = requests.get(api_url, headers=headers)
     sha = get_response.json().get("sha") if get_response.status_code == 200 else None
 
@@ -124,35 +124,6 @@ def upload_zip_to_github(zip_path):
     else:
         logging.error(f"❌ GitHub upload failed: {response.json()}")
         return False
-
-def fetch_backup_zip_sizes_from_github():
-    GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
-    GITHUB_REPO = os.getenv("GITHUB_REPO")
-    headers = {
-        "Authorization": f"token {GITHUB_TOKEN}",
-        "Accept": "application/vnd.github.v3+json"
-    }
-    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents"
-    response = requests.get(url, headers=headers)
-
-    if response.status_code != 200:
-        logging.error(f"GitHub API error: {response.text}")
-        return []
-
-    zip_files = [item for item in response.json() if item['name'].endswith('.zip') and 'codeanalyzer_' in item['name']]
-    chart_data = {}
-    for f in zip_files:
-        try:
-            name = f['name']
-            ts = name.replace("codeanalyzer_", "").replace(".zip", "")
-            dt = datetime.datetime.strptime(ts, "%Y-%m-%d_%I-%M%p")
-            date_key = dt.date().isoformat()
-            size_kb = round(f['size'] / 1024, 2)
-            chart_data[date_key] = chart_data.get(date_key, 0) + size_kb
-        except Exception as e:
-            logging.warning(f"Failed to process GitHub zip {f['name']}: {e}")
-
-    return chart_data
 
 # ===== CONFIGURATION =====
 HOST = "7.tcp.eu.ngrok.io"
