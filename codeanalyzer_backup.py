@@ -126,8 +126,8 @@ def upload_zip_to_github(zip_path):
         return False
 
 # ===== CONFIGURATION =====
-HOST = "4.tcp.eu.ngrok.io"
-PORT = 10244
+HOST = "0.tcp.eu.ngrok.io"
+PORT = 19617
 USERNAME = 'jay'
 PASSWORD = '5570'
 LINUX_FOLDER = f'/home/{USERNAME}/codeanalyzer/src'
