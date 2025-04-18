@@ -55,19 +55,16 @@ def get_zip_folder_contents(zip_path):
 
 def get_backup_size_trend():
     backups = sorted(glob.glob(os.path.join(WINDOWS_BACKUP_BASE, "*.zip")), key=os.path.getmtime)
-    data = {}
+    data = []
     for b in backups:
         ts_raw = os.path.basename(b).replace("codeanalyzer_", "").replace(".zip", "")
         try:
             dt = datetime.strptime(ts_raw, "%Y-%m-%d_%I-%M%p")
-            date_key = dt.strftime("%Y-%m-%d")  # use only date
             size_kb = round(os.path.getsize(b) / 1024, 2)
-            data[date_key] = data.get(date_key, 0) + size_kb
+            data.append({"datetime": dt, "size_kb": size_kb})
         except:
             continue
-    df = pd.DataFrame({"Date": list(data.keys()), "Total Size (KB)": list(data.values())})
-    df["Date"] = pd.to_datetime(df["Date"])
-    return df.sort_values("Date")
+    return pd.DataFrame(data)
 
 # ======================== Pages ========================
 
@@ -94,16 +91,21 @@ if page == "📊 Overview":
     if not trend_df.empty:
         try:
             import plotly.express as px
+            trend_df = trend_df.sort_values("datetime")
             fig = px.bar(
                 trend_df,
-                x="Date",
-                y="Total Size (KB)",
-                orientation="v",
+                x="datetime",
+                y="size_kb",
                 title="Daily Backup Size Chart",
-                labels={"Total Size (KB)": "Backup Size (KB)", "Date": "Date"},
-                text="Total Size (KB)"
+                labels={"datetime": "Date", "size_kb": "Backup Size (KB)"},
+                text="size_kb"
             )
-            fig.update_layout(yaxis_title="Backup Size (KB)", xaxis_title="Date", height=400)
+            fig.update_layout(
+                xaxis_title="Date",
+                yaxis_title="Backup Size (KB)",
+                height=400,
+                xaxis_tickformat="%b %d %I:%M%p"
+            )
             st.plotly_chart(fig, use_container_width=True)
         except Exception as e:
             st.warning(f"Chart rendering failed: {e}")
