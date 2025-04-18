@@ -6,19 +6,23 @@ import zipfile
 import sys
 import pandas as pd
 
+# ===== Load GitHub secrets for cloud deployment =====
+if "GITHUB_TOKEN" in st.secrets:
+    os.environ["GITHUB_TOKEN"] = st.secrets["GITHUB_TOKEN"]
+    os.environ["GITHUB_REPO"] = st.secrets["GITHUB_REPO"]
+    os.environ["GITHUB_BRANCH"] = st.secrets.get("GITHUB_BRANCH", "main")
+    os.environ["GITHUB_COMMIT_EMAIL"] = st.secrets["GITHUB_COMMIT_EMAIL"]
+    os.environ["GITHUB_COMMIT_NAME"] = st.secrets["GITHUB_COMMIT_NAME"]
+
 sys.path.append(os.path.dirname(__file__))
 from codeanalyzer_backup import main, WINDOWS_BACKUP_BASE
-
 
 # Set Streamlit page config
 st.set_page_config(page_title="CodeAnalyzer Backup Dashboard", layout="wide")
 
 # Sidebar Navigation with Logo
-st.sidebar.markdown("""
-    <div style='display: flex; justify-content: center;'>
-        <img src='https://upload.wikimedia.org/wikipedia/commons/thumb/6/6b/Meetup_Logo.png/512px-Meetup_Logo.png' width='100'/>
-    </div>
-""", unsafe_allow_html=True)
+st.sidebar.image(os.path.join("D:/Ansu", "amdocs-logo_brandlogos.net_dpyzc-1.png"), width=150)
+st.sidebar.title("Navigation")
 page = st.sidebar.radio(" ", ["📊 Overview", "📁 Latest Backup Info", "📂 Contents of Latest Backup"])
 
 # Define absolute path to log file
@@ -79,7 +83,6 @@ if page == "📊 Overview":
             else:
                 st.error("❌ Unexpected result from backup script.")
 
-    
     st.markdown("<br><br>", unsafe_allow_html=True)
     st.subheader("📊 Daily Backup Size Chart")
     trend_df = get_backup_size_trend()
@@ -98,8 +101,6 @@ if page == "📊 Overview":
             )
             fig.update_layout(yaxis_title="Date", xaxis_title="Size (KB)", height=400)
             st.plotly_chart(fig, use_container_width=True)
-        except Exception as e:
-            st.warning(f"Chart rendering failed: {e}")
         except Exception as e:
             st.warning(f"Chart rendering failed: {e}")
     else:

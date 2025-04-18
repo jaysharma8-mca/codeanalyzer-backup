@@ -1,12 +1,14 @@
 import os
 import datetime
-import shutil
 import paramiko
 from scp import SCPClient
 import subprocess
 import smtplib
 from email.mime.text import MIMEText
 import logging
+import shutil
+import base64
+import requests
 
 # ===== UTILITY FUNCTIONS =====
 
@@ -62,22 +64,6 @@ def format_windows_size(size_in_bytes, linux_size_unit):
     else:
         return f"{round(size_in_bytes / 1024, 2)} KB"
 
-def git_commit_push(repo_path, folder_name, commit_label):
-    os.chdir(repo_path)
-
-    # Stage changes
-    subprocess.run(["git", "add", folder_name], check=True)
-
-    # Check if there’s anything to commit
-    result = subprocess.run(["git", "status", "--porcelain"], stdout=subprocess.PIPE)
-    if not result.stdout:
-        logging.info("Nothing to commit. Working tree clean.")
-        return  # Skip commit/push
-
-    # Commit and push
-    subprocess.run(["git", "commit", "-m", f"Backup on {commit_label}"], check=True)
-    subprocess.run(["git", "push"], check=True)
-
 def send_email(sender, receivers, password, subject, body, smtp_server, smtp_port):
     msg = MIMEText(body, "html")
     msg["Subject"] = subject
@@ -88,13 +74,61 @@ def send_email(sender, receivers, password, subject, body, smtp_server, smtp_por
         server.login(sender, password)
         server.sendmail(sender, receivers, msg.as_string())
 
+def upload_zip_to_github(zip_path):
+    GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
+    GITHUB_REPO = os.getenv("GITHUB_REPO")
+    GITHUB_BRANCH = os.getenv("GITHUB_BRANCH", "main")
+    COMMITTER_NAME = os.getenv("GITHUB_COMMIT_NAME", "Backup Bot")
+    COMMITTER_EMAIL = os.getenv("GITHUB_COMMIT_EMAIL", "bot@example.com")
+
+    if not all([GITHUB_TOKEN, GITHUB_REPO]):
+        logging.error("GitHub credentials not set in environment.")
+        return False
+
+    filename = os.path.basename(zip_path)
+    api_url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{filename}"
+
+    headers = {
+        "Authorization": f"token {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github.v3+json",
+    }
+
+    with open(zip_path, "rb") as f:
+        content = base64.b64encode(f.read()).decode("utf-8")
+
+    commit_message = f"Backup on {datetime.datetime.now().strftime('%Y-%m-%d %I-%M%p')}"
+    get_response = requests.get(api_url, headers=headers)
+    sha = get_response.json().get("sha") if get_response.status_code == 200 else None
+
+    payload = {
+        "message": commit_message,
+        "branch": GITHUB_BRANCH,
+        "committer": {
+            "name": COMMITTER_NAME,
+            "email": COMMITTER_EMAIL
+        },
+        "content": content
+    }
+
+    if sha:
+        payload["sha"] = sha
+
+    response = requests.put(api_url, json=payload, headers=headers)
+
+    if response.status_code in [200, 201]:
+        logging.info("✅ Backup ZIP uploaded to GitHub successfully.")
+        return True
+    else:
+        logging.error(f"❌ GitHub upload failed: {response.json()}")
+        return False
+
 # ===== CONFIGURATION =====
-HOST = '6.tcp.eu.ngrok.io'
-PORT = 16090
+HOST = 'localhost'
+PORT = 2222
 USERNAME = 'jay'
 PASSWORD = '5570'
 LINUX_FOLDER = f'/home/{USERNAME}/codeanalyzer/src'
-WINDOWS_BACKUP_BASE = os.path.join(os.path.dirname(__file__), 'codeanalyzer-backups')
+WINDOWS_BACKUP_BASE = r'D:\Ansu\codeanalyzer-backups'
 SENDER_EMAIL = "jaysharma155.cmpica@gmail.com"
 RECEIVER_EMAILS = [
     "jaysharma155.cmpicamca15@gmail.com",
@@ -128,13 +162,8 @@ def main(send_email_flag=True):
         zip_file = shutil.make_archive(destination_path, 'zip', destination_path)
         logging.info(f"Created zip archive: {zip_file}")
 
-        try:
-            logging.info("Starting GitHub push of ZIP file...")
-            git_commit_push(WINDOWS_BACKUP_BASE, os.path.basename(zip_file), folder_name[13:])
-            logging.info("Git commit and push completed successfully.")
-        except Exception as e:
-            logging.error(f"Git push failed: {e}")
-            result["message"] = f"Git push failed: {e}"
+        if not upload_zip_to_github(zip_file):
+            result["message"] = "GitHub upload failed via API."
             return result
 
         linux_size = get_linux_folder_size(HOST, PORT, USERNAME, PASSWORD)
@@ -143,26 +172,21 @@ def main(send_email_flag=True):
         logging.info(f"Linux folder size  : {linux_size}")
         logging.info(f"Windows folder size: {win_size}")
 
-        pretty_timestamp = folder_name.replace("codeanalyzer_", "").replace("_", " ")
-
         if send_email_flag:
             try:
-                email_subject = "✅ CodeAnalyzer Backup Summary"
+                email_subject = "CodeAnalyzer Backup Successful"
                 email_body = f"""
-<h2 style='color: #1a73e8;'>✅ CodeAnalyzer Backup Summary</h2>
-<p>Backup completed successfully on <b>{pretty_timestamp}</b>.</p>
-<table border="1" cellpadding="6" style="border-collapse: collapse; font-family: Arial;">
-<tr style='background-color: #f2f2f2;'><th>Source</th><th style='color: purple;'>Size</th></tr>
-<tr><td>Linux Folder</td><td>{linux_size}</td></tr>
-<tr><td>Windows Folder</td><td>{win_size}</td></tr>
-</table>
-<br>
-<b>Backup Location:</b><br>
-<code>{destination_path}</code>
-<br><br>
-<p style='color: purple;'>✅ <b>Backup ZIP has been pushed to GitHub.</b></p>
-<p>Regards,<br>Your Backup Script 🤖</p>
-"""
+                <h2>✅ <span style='color:#0066cc;'>CodeAnalyzer Backup Summary</span></h2>
+                <p>Backup completed successfully on <b>{folder_name[13:]}</b>.</p>
+                <table border="1" cellpadding="5" cellspacing="0">
+                  <tr><th>Source</th><th>Size</th></tr>
+                  <tr><td>Linux Folder</td><td>{linux_size}</td></tr>
+                  <tr><td>Windows Folder</td><td>{win_size}</td></tr>
+                </table>
+                <p><b>Backup Location:</b><br>{destination_path}</p>
+                <p style='color:green;'>✅ Backup ZIP has been pushed to GitHub.</p>
+                <br><p>Regards,<br><i>Your Backup Script 🤖</i></p>
+                """
                 send_email(SENDER_EMAIL, RECEIVER_EMAILS, EMAIL_PASSWORD, email_subject, email_body, SMTP_SERVER, SMTP_PORT)
                 logging.info("Email sent successfully.")
             except Exception as e:
