@@ -9,6 +9,7 @@ import logging
 import shutil
 import base64
 import requests
+import json
 
 # ===== CONFIGURATION =====
 USERNAME = 'jay'
@@ -32,6 +33,20 @@ logging.basicConfig(
 )
 
 # ===== UTILITY FUNCTIONS =====
+
+def fetch_ngrok_tunnel():
+    try:
+        res = requests.get("http://127.0.0.1:4040/api/tunnels")
+        tunnels = res.json().get("tunnels", [])
+        for tunnel in tunnels:
+            if tunnel["proto"] == "tcp":
+                public_url = tunnel["public_url"]  # e.g. tcp://7.tcp.eu.ngrok.io:11337
+                parts = public_url.replace("tcp://", "").split(":")
+                return parts[0], int(parts[1])
+        logging.error("No TCP tunnel found in Ngrok.")
+    except Exception as e:
+        logging.error(f"Error fetching Ngrok tunnel: {e}")
+    return None, None
 
 def generate_timestamped_folder_name():
     return f"codeanalyzer_{datetime.datetime.now().strftime('%Y-%m-%d_%I-%M%p')}"
@@ -148,21 +163,28 @@ def main(send_email_flag=True):
     result = {"success": False, "message": ""}
     logging.info(">>> Starting backup process...")
 
+    host, port = fetch_ngrok_tunnel()
+    if not host or not port:
+        result["message"] = "❌ Ngrok TCP tunnel not found. Is Ngrok running?"
+        return result
+
     try:
         folder_name = generate_timestamped_folder_name()
         destination_path = create_destination_folder(WINDOWS_BACKUP_BASE, folder_name)
         logging.info(f"Created backup folder: {destination_path}")
 
-        # SCP Transfer is now removed from here
+        if not scp_transfer(host, port, USERNAME, PASSWORD, LINUX_FOLDER, destination_path):
+            result["message"] = "❌ SCP transfer failed after 3 retries."
+            return result
+
         zip_file = shutil.make_archive(destination_path, 'zip', destination_path)
         logging.info(f"Created zip archive: {zip_file}")
 
-        # GitHub upload is now handled by the GitHub API
         if not upload_zip_to_github(zip_file):
             result["message"] = "❌ GitHub upload failed via API."
             return result
 
-        linux_size = get_linux_folder_size(USERNAME, PASSWORD, LINUX_FOLDER)
+        linux_size = get_linux_folder_size(host, port, USERNAME, PASSWORD)
         win_bytes = get_windows_folder_size(os.path.join(destination_path, 'src'))
         win_size = format_windows_size(win_bytes, linux_size)
         logging.info(f"Linux folder size  : {linux_size}")
