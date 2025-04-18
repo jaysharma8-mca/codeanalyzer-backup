@@ -64,7 +64,17 @@ def format_windows_size(size_in_bytes, linux_size_unit):
 
 def git_commit_push(repo_path, folder_name, commit_label):
     os.chdir(repo_path)
+
+    # Stage changes
     subprocess.run(["git", "add", folder_name], check=True)
+
+    # Check if there’s anything to commit
+    result = subprocess.run(["git", "status", "--porcelain"], stdout=subprocess.PIPE)
+    if not result.stdout:
+        logging.info("Nothing to commit. Working tree clean.")
+        return  # Skip commit/push
+
+    # Commit and push
     subprocess.run(["git", "commit", "-m", f"Backup on {commit_label}"], check=True)
     subprocess.run(["git", "push"], check=True)
 
