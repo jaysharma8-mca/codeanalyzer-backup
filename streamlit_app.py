@@ -5,6 +5,7 @@ from datetime import datetime
 import zipfile
 import sys
 import pandas as pd
+import requests
 
 # ===== Load GitHub secrets for cloud deployment =====
 if "GITHUB_TOKEN" in st.secrets:
@@ -26,10 +27,8 @@ st.sidebar.markdown("""
         <img src='https://upload.wikimedia.org/wikipedia/commons/thumb/6/6b/Meetup_Logo.png/512px-Meetup_Logo.png' width='120'/>
     </div>
 """, unsafe_allow_html=True)
-# st.sidebar.title("Navigation")
 page = st.sidebar.radio(" ", ["📊 Overview", "📁 Latest Backup Info", "📂 Contents of Latest Backup"])
 
-# Define absolute path to log file
 LOG_FILE_PATH = os.path.join(os.path.dirname(__file__), 'backup.log')
 
 def get_latest_backup_zip():
@@ -54,21 +53,36 @@ def get_zip_folder_contents(zip_path):
     except Exception as e:
         return [f"Error reading zip: {e}"]
 
-def get_backup_size_trend():
-    backups = sorted(glob.glob(os.path.join(WINDOWS_BACKUP_BASE, "*.zip")), key=os.path.getmtime)
-    data = {}
-    for b in backups:
-        ts_raw = os.path.basename(b).replace("codeanalyzer_", "").replace(".zip", "")
+def get_backup_size_trend_from_github():
+    token = os.getenv("GITHUB_TOKEN")
+    repo = os.getenv("GITHUB_REPO")
+    branch = os.getenv("GITHUB_BRANCH", "main")
+    api_url = f"https://api.github.com/repos/{repo}/contents?ref={branch}"
+    headers = {
+        "Authorization": f"token {token}",
+        "Accept": "application/vnd.github.v3+json",
+    }
+    res = requests.get(api_url, headers=headers)
+    if res.status_code != 200:
+        return pd.DataFrame()
+
+    backups = [f for f in res.json() if f["name"].startswith("codeanalyzer_") and f["name"].endswith(".zip")]
+    date_size_map = {}
+    for file in backups:
         try:
-            dt = datetime.strptime(ts_raw, "%Y-%m-%d_%I-%M%p").date()  # Group by date only
-            size_kb = round(os.path.getsize(b) / 1024, 2)
-            data[dt] = data.get(dt, 0) + size_kb
+            name = file["name"].replace("codeanalyzer_", "").replace(".zip", "")
+            dt = datetime.strptime(name, "%Y-%m-%d_%I-%M%p").date()
+            size_kb = round(file["size"] / 1024, 2)
+            date_size_map[dt] = date_size_map.get(dt, 0) + size_kb
         except:
             continue
-    return pd.DataFrame({"Date": list(data.keys()), "Total Size (KB)": list(data.values())})
+
+    return pd.DataFrame({
+        "Date": list(date_size_map.keys()),
+        "Total Size (KB)": list(date_size_map.values())
+    })
 
 # ======================== Pages ========================
-
 if page == "📊 Overview":
     st.markdown("<h1 style='text-align: center;'>🛡️ CodeAnalyzer Backup Utility</h1>", unsafe_allow_html=True)
     st.markdown("---")
@@ -88,26 +102,24 @@ if page == "📊 Overview":
 
     st.markdown("<br><br>", unsafe_allow_html=True)
     st.subheader("📊 Daily Backup Size Chart")
-    trend_df = get_backup_size_trend()
+    trend_df = get_backup_size_trend_from_github()
     if not trend_df.empty:
         try:
             import plotly.express as px
-            trend_df["Date"] = pd.to_datetime(trend_df["Date"])
             fig = px.bar(
                 trend_df,
                 x="Date",
                 y="Total Size (KB)",
                 title="Daily Backup Size Chart",
-                labels={"Total Size (KB)": "Backup Size (KB)", "Date": "Date"},
-                text="Total Size (KB)"
+                labels={"Date": "Date", "Total Size (KB)": "Backup Size (KB)"},
+                text_auto='.2f'
             )
-            fig.update_traces(textposition='outside')
-            fig.update_layout(xaxis_title="Date", yaxis_title="Backup Size (KB)", height=450)
+            fig.update_layout(xaxis_title="Date", yaxis_title="Backup Size (KB)", height=400)
             st.plotly_chart(fig, use_container_width=True)
         except Exception as e:
             st.warning(f"Chart rendering failed: {e}")
     else:
-        st.info("No data yet to display trend chart.")
+        st.info("No backup data found in GitHub.")
 
 elif page == "📁 Latest Backup Info":
     st.markdown("## 📁 Latest Backup Info")
