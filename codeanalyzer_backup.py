@@ -9,47 +9,13 @@ import logging
 import shutil
 import base64
 import requests
-import json
-
-# ===== CONFIGURATION =====
-USERNAME = 'jay'
-PASSWORD = '5570'
-LINUX_FOLDER = f'/home/{USERNAME}/codeanalyzer/src'
-WINDOWS_BACKUP_BASE = os.path.join(os.path.dirname(__file__), "codeanalyzer-backups")
-SENDER_EMAIL = "jaysharma155.cmpica@gmail.com"
-RECEIVER_EMAILS = [
-    "jaysharma155.cmpicamca15@gmail.com",
-    "niveditasinghec1011@gmail.com",
-]
-EMAIL_PASSWORD = "zrok phoy fycd uwnm"
-SMTP_SERVER = "smtp.gmail.com"
-SMTP_PORT = 587
-
-# ===== LOGGING SETUP =====
-logging.basicConfig(
-    filename='backup.log',
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+from zoneinfo import ZoneInfo  # NEW for timezone support
 
 # ===== UTILITY FUNCTIONS =====
 
-def fetch_ngrok_tunnel():
-    try:
-        res = requests.get("http://127.0.0.1:4040/api/tunnels")
-        tunnels = res.json().get("tunnels", [])
-        for tunnel in tunnels:
-            if tunnel["proto"] == "tcp":
-                public_url = tunnel["public_url"]  # e.g. tcp://7.tcp.eu.ngrok.io:11337
-                parts = public_url.replace("tcp://", "").split(":")
-                return parts[0], int(parts[1])
-        logging.error("No TCP tunnel found in Ngrok.")
-    except Exception as e:
-        logging.error(f"Error fetching Ngrok tunnel: {e}")
-    return None, None
-
 def generate_timestamped_folder_name():
-    return f"codeanalyzer_{datetime.datetime.now().strftime('%Y-%m-%d_%I-%M%p')}"
+    local_time = datetime.datetime.now(ZoneInfo("Europe/London"))  # CHANGE TIMEZONE HERE IF NEEDED
+    return f"codeanalyzer_{local_time.strftime('%Y-%m-%d_%I-%M%p')}"
 
 def create_destination_folder(base_path, folder_name):
     full_path = os.path.join(base_path, folder_name)
@@ -67,8 +33,8 @@ def scp_transfer(host, port, username, password, linux_path, windows_dest):
             ssh.close()
             return True
         except Exception as e:
-            logging.warning(f"SCP attempt {attempt + 1} failed: {e}")
-    logging.error("SCP transfer failed after 3 retries.")
+            logging.warning(f"scp_transfer failed on attempt {attempt + 1}: {e}")
+    logging.error("scp_transfer failed after 3 attempts.")
     return False
 
 def get_linux_folder_size(host, port, username, password):
@@ -132,7 +98,8 @@ def upload_zip_to_github(zip_path):
     with open(zip_path, "rb") as f:
         content = base64.b64encode(f.read()).decode("utf-8")
 
-    commit_message = f"Backup on {datetime.datetime.now().strftime('%Y-%m-%d %I-%M%p')}"
+    now = datetime.datetime.now(ZoneInfo("Europe/London"))  # Ensure consistent timestamp
+    commit_message = f"Backup on {now.strftime('%Y-%m-%d %I-%M%p')}"
     get_response = requests.get(api_url, headers=headers)
     sha = get_response.json().get("sha") if get_response.status_code == 200 else None
 
@@ -158,33 +125,51 @@ def upload_zip_to_github(zip_path):
         logging.error(f"❌ GitHub upload failed: {response.json()}")
         return False
 
+# ===== CONFIGURATION =====
+HOST = "4.tcp.eu.ngrok.io"
+PORT = 10244
+USERNAME = 'jay'
+PASSWORD = '5570'
+LINUX_FOLDER = f'/home/{USERNAME}/codeanalyzer/src'
+WINDOWS_BACKUP_BASE = os.path.join(os.path.dirname(__file__), "codeanalyzer-backups")
+SENDER_EMAIL = "jaysharma155.cmpica@gmail.com"
+RECEIVER_EMAILS = [
+    "jaysharma155.cmpicamca15@gmail.com",
+    "niveditasinghec1011@gmail.com",
+]
+EMAIL_PASSWORD = "zrok phoy fycd uwnm"
+SMTP_SERVER = "smtp.gmail.com"
+SMTP_PORT = 587
+
+# ===== LOGGING SETUP =====
+logging.basicConfig(
+    filename='backup.log',
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+
 # ===== MAIN FUNCTION =====
 def main(send_email_flag=True):
     result = {"success": False, "message": ""}
     logging.info(">>> Starting backup process...")
-
-    host, port = fetch_ngrok_tunnel()
-    if not host or not port:
-        result["message"] = "❌ Ngrok TCP tunnel not found. Is Ngrok running?"
-        return result
-
     try:
         folder_name = generate_timestamped_folder_name()
         destination_path = create_destination_folder(WINDOWS_BACKUP_BASE, folder_name)
         logging.info(f"Created backup folder: {destination_path}")
 
-        if not scp_transfer(host, port, USERNAME, PASSWORD, LINUX_FOLDER, destination_path):
-            result["message"] = "❌ SCP transfer failed after 3 retries."
+        logging.info("Starting SCP transfer...")
+        if not scp_transfer(HOST, PORT, USERNAME, PASSWORD, LINUX_FOLDER, destination_path):
+            result["message"] = "SCP transfer failed after 3 retries."
             return result
 
         zip_file = shutil.make_archive(destination_path, 'zip', destination_path)
         logging.info(f"Created zip archive: {zip_file}")
 
         if not upload_zip_to_github(zip_file):
-            result["message"] = "❌ GitHub upload failed via API."
+            result["message"] = "GitHub upload failed via API."
             return result
 
-        linux_size = get_linux_folder_size(host, port, USERNAME, PASSWORD)
+        linux_size = get_linux_folder_size(HOST, PORT, USERNAME, PASSWORD)
         win_bytes = get_windows_folder_size(os.path.join(destination_path, 'src'))
         win_size = format_windows_size(win_bytes, linux_size)
         logging.info(f"Linux folder size  : {linux_size}")
@@ -211,10 +196,10 @@ def main(send_email_flag=True):
                 logging.error(f"Failed to send email: {e}")
 
         result["success"] = True
-        result["message"] = "✅ Backup completed successfully."
+        result["message"] = "Backup completed successfully."
         return result
 
     except Exception as e:
         logging.error(f"Unhandled exception: {e}")
-        result["message"] = f"❌ Unhandled exception: {e}"
+        result["message"] = f"Unhandled exception: {e}"
         return result
