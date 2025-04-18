@@ -16,32 +16,32 @@ if "GITHUB_TOKEN" in st.secrets:
     os.environ["GITHUB_COMMIT_EMAIL"] = st.secrets["GITHUB_COMMIT_EMAIL"]
     os.environ["GITHUB_COMMIT_NAME"] = st.secrets["GITHUB_COMMIT_NAME"]
 
+# Path setup
 sys.path.append(os.path.dirname(__file__))
 from codeanalyzer_backup import main, WINDOWS_BACKUP_BASE
 
-# Set Streamlit page config
+# Streamlit page config
 st.set_page_config(page_title="CodeAnalyzer Backup Dashboard", layout="wide")
 
-# ===== VM Reachability Check =====
-def is_vm_reachable(host, port, timeout=3):
-    try:
-        with socket.create_connection((host, port), timeout=timeout):
-            return True
-    except Exception:
-        return False
-
-VM_HOST = "7.tcp.eu.ngrok.io"
-VM_PORT = 11337
-
-vm_reachable = is_vm_reachable(VM_HOST, VM_PORT)
-
-# Sidebar Navigation with Logo
+# Sidebar branding
 st.sidebar.markdown("""
     <div style='display: flex; justify-content: center; margin-bottom: 10px;'>
         <img src='https://upload.wikimedia.org/wikipedia/commons/thumb/6/6b/Meetup_Logo.png/512px-Meetup_Logo.png' width='120'/>
     </div>
 """, unsafe_allow_html=True)
+
 page = st.sidebar.radio(" ", ["📊 Overview", "📁 Latest Backup Info", "📂 Contents of Latest Backup"])
+
+# VM check helper
+def is_vm_reachable():
+    try:
+        res = requests.get("http://127.0.0.1:4040/api/tunnels")
+        for tunnel in res.json().get("tunnels", []):
+            if tunnel["proto"] == "tcp":
+                return True
+    except:
+        pass
+    return False
 
 LOG_FILE_PATH = os.path.join(os.path.dirname(__file__), 'backup.log')
 
@@ -52,13 +52,11 @@ def get_latest_backup_zip():
 def show_log_tail(log_path, num_lines=20):
     if os.path.exists(log_path):
         with open(log_path, 'r') as f:
-            lines = f.readlines()[-num_lines:]
-            return "".join(lines)
+            return "".join(f.readlines()[-num_lines:])
     return "Log file not found."
 
 def list_recent_backups(n=5):
-    backups = sorted(glob.glob(os.path.join(WINDOWS_BACKUP_BASE, "*.zip")), key=os.path.getmtime, reverse=True)
-    return backups[:n]
+    return sorted(glob.glob(os.path.join(WINDOWS_BACKUP_BASE, "*.zip")), key=os.path.getmtime, reverse=True)[:n]
 
 def get_zip_folder_contents(zip_path):
     try:
@@ -81,20 +79,16 @@ def get_backup_size_trend_from_github():
         return pd.DataFrame()
 
     backups = [f for f in res.json() if f["name"].startswith("codeanalyzer_") and f["name"].endswith(".zip")]
-    date_size_map = {}
+    data = {}
     for file in backups:
         try:
             name = file["name"].replace("codeanalyzer_", "").replace(".zip", "")
             dt = datetime.strptime(name, "%Y-%m-%d_%I-%M%p").date()
             size_kb = round(file["size"] / 1024, 2)
-            date_size_map[dt] = date_size_map.get(dt, 0) + size_kb
+            data[dt] = data.get(dt, 0) + size_kb
         except:
             continue
-
-    return pd.DataFrame({
-        "Date": list(date_size_map.keys()),
-        "Total Size (KB)": list(date_size_map.values())
-    })
+    return pd.DataFrame({"Date": list(data.keys()), "Total Size (KB)": list(data.values())})
 
 # ======================== Pages ========================
 
@@ -102,25 +96,27 @@ if page == "📊 Overview":
     st.markdown("<h1 style='text-align: center;'>🛡️ CodeAnalyzer Backup Utility</h1>", unsafe_allow_html=True)
     st.markdown("---")
 
-    st.subheader("📶 VM Connection Status")
-    if vm_reachable:
-        st.success("🟢 VM is reachable.")
+    vm_status = is_vm_reachable()
+    if vm_status:
+        st.success("🟢 VM is reachable via Ngrok")
     else:
-        st.error("🔴 VM is unreachable. Backup is disabled.")
+        st.error("🔴 VM is currently unreachable (Ngrok not running?)")
 
     st.subheader("⚙️ Run Backup")
     send_email_flag = st.checkbox("Send Email Notification", value=True)
-    if st.button("Run Backup Now", disabled=not vm_reachable):
-        st.markdown("<div style='margin-top: 25px;'></div>", unsafe_allow_html=True)
-        with st.spinner("Running backup... this may take a few seconds..."):
-            result = main(send_email_flag=send_email_flag)
-            if isinstance(result, dict):
-                if result.get("success"):
-                    st.success(f"✅ {result.get('message')}")
+    if not vm_status:
+        st.warning("Backup disabled: VM is unreachable.")
+    else:
+        if st.button("Run Backup Now"):
+            with st.spinner("Running backup..."):
+                result = main(send_email_flag=send_email_flag)
+                if isinstance(result, dict):
+                    if result.get("success"):
+                        st.success(result.get("message"))
+                    else:
+                        st.error(result.get("message"))
                 else:
-                    st.error(f"❌ {result.get('message')}")
-            else:
-                st.error("❌ Unexpected result from backup script.")
+                    st.error("Unexpected result from backup script.")
 
     st.markdown("<br><br>", unsafe_allow_html=True)
     st.subheader("📊 Daily Backup Size Chart")
@@ -133,7 +129,7 @@ if page == "📊 Overview":
                 x="Date",
                 y="Total Size (KB)",
                 title="Daily Backup Size Chart",
-                labels={"Date": "Date", "Total Size (KB)": "Backup Size (KB)"},
+                labels={"Date": "Date", "Total Size (KB)": "Size (KB)"},
                 text_auto='.2f'
             )
             fig.update_layout(xaxis_title="Date", yaxis_title="Backup Size (KB)", height=400)
@@ -141,7 +137,7 @@ if page == "📊 Overview":
         except Exception as e:
             st.warning(f"Chart rendering failed: {e}")
     else:
-        st.info("No backup data found in GitHub.")
+        st.info("No backup data found on GitHub.")
 
 elif page == "📁 Latest Backup Info":
     st.markdown("## 📁 Latest Backup Info")
@@ -161,8 +157,7 @@ elif page == "📁 Latest Backup Info":
         st.code(log_output, language="text")
 
     with st.expander("🧾 Recent Backup Files"):
-        recent = list_recent_backups()
-        for f in recent:
+        for f in list_recent_backups():
             size = round(os.path.getsize(f) / 1024, 2)
             ts = os.path.basename(f).replace("codeanalyzer_", "").replace(".zip", "")
             st.markdown(f"- `{os.path.basename(f)}` — **{size} KB** @ `{ts}`")
