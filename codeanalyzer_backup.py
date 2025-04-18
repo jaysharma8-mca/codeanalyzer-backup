@@ -9,6 +9,7 @@ import logging
 import shutil
 import base64
 import requests
+import json
 
 # ===== UTILITY FUNCTIONS =====
 
@@ -56,11 +57,13 @@ def get_windows_folder_size(path):
             total += os.path.getsize(fp)
     return total  # bytes
 
-def format_windows_size_human_readable(size_in_bytes):
-    if size_in_bytes >= 1024 * 1024 * 1024:
-        return f"{round(size_in_bytes / (1024 ** 3), 2)} GB"
-    elif size_in_bytes >= 1024 * 1024:
-        return f"{round(size_in_bytes / (1024 ** 2), 2)} MB"
+def format_windows_size(size_in_bytes, linux_size_unit):
+    if linux_size_unit.endswith('K'):
+        return f"{round(size_in_bytes / 1024, 2)} KB"
+    elif linux_size_unit.endswith('M'):
+        return f"{round(size_in_bytes / (1024 * 1024), 2)} MB"
+    elif linux_size_unit.endswith('G'):
+        return f"{round(size_in_bytes / (1024 * 1024 * 1024), 2)} GB"
     else:
         return f"{round(size_in_bytes / 1024, 2)} KB"
 
@@ -122,6 +125,35 @@ def upload_zip_to_github(zip_path):
         logging.error(f"❌ GitHub upload failed: {response.json()}")
         return False
 
+def fetch_backup_zip_sizes_from_github():
+    GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
+    GITHUB_REPO = os.getenv("GITHUB_REPO")
+    headers = {
+        "Authorization": f"token {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github.v3+json"
+    }
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents"
+    response = requests.get(url, headers=headers)
+
+    if response.status_code != 200:
+        logging.error(f"GitHub API error: {response.text}")
+        return []
+
+    zip_files = [item for item in response.json() if item['name'].endswith('.zip') and 'codeanalyzer_' in item['name']]
+    chart_data = {}
+    for f in zip_files:
+        try:
+            name = f['name']
+            ts = name.replace("codeanalyzer_", "").replace(".zip", "")
+            dt = datetime.datetime.strptime(ts, "%Y-%m-%d_%I-%M%p")
+            date_key = dt.date().isoformat()
+            size_kb = round(f['size'] / 1024, 2)
+            chart_data[date_key] = chart_data.get(date_key, 0) + size_kb
+        except Exception as e:
+            logging.warning(f"Failed to process GitHub zip {f['name']}: {e}")
+
+    return chart_data
+
 # ===== CONFIGURATION =====
 HOST = "7.tcp.eu.ngrok.io"
 PORT = 11337
@@ -168,7 +200,7 @@ def main(send_email_flag=True):
 
         linux_size = get_linux_folder_size(HOST, PORT, USERNAME, PASSWORD)
         win_bytes = get_windows_folder_size(os.path.join(destination_path, 'src'))
-        win_size = format_windows_size_human_readable(win_bytes)
+        win_size = format_windows_size(win_bytes, linux_size)
         logging.info(f"Linux folder size  : {linux_size}")
         logging.info(f"Windows folder size: {win_size}")
 
