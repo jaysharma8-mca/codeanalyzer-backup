@@ -6,7 +6,6 @@ import zipfile
 import sys
 import pandas as pd
 import requests
-import socket
 
 # ===== Load GitHub secrets for cloud deployment =====
 if "GITHUB_TOKEN" in st.secrets:
@@ -31,17 +30,6 @@ st.sidebar.markdown("""
 """, unsafe_allow_html=True)
 
 page = st.sidebar.radio(" ", ["📊 Overview", "📁 Latest Backup Info", "📂 Contents of Latest Backup"])
-
-# VM check helper
-def is_vm_reachable():
-    try:
-        res = requests.get("http://127.0.0.1:4040/api/tunnels")
-        for tunnel in res.json().get("tunnels", []):
-            if tunnel["proto"] == "tcp":
-                return True
-    except:
-        pass
-    return False
 
 LOG_FILE_PATH = os.path.join(os.path.dirname(__file__), 'backup.log')
 
@@ -95,28 +83,20 @@ def get_backup_size_trend_from_github():
 if page == "📊 Overview":
     st.markdown("<h1 style='text-align: center;'>🛡️ CodeAnalyzer Backup Utility</h1>", unsafe_allow_html=True)
     st.markdown("---")
-
-    vm_status = is_vm_reachable()
-    if vm_status:
-        st.success("🟢 VM is reachable via Ngrok")
-    else:
-        st.error("🔴 VM is currently unreachable (Ngrok not running?)")
-
     st.subheader("⚙️ Run Backup")
     send_email_flag = st.checkbox("Send Email Notification", value=True)
-    if not vm_status:
-        st.warning("Backup disabled: VM is unreachable.")
-    else:
-        if st.button("Run Backup Now"):
-            with st.spinner("Running backup..."):
-                result = main(send_email_flag=send_email_flag)
-                if isinstance(result, dict):
-                    if result.get("success"):
-                        st.success(result.get("message"))
-                    else:
-                        st.error(result.get("message"))
+
+    if st.button("Run Backup Now"):
+        st.markdown("<div style='margin-top: 25px;'></div>", unsafe_allow_html=True)
+        with st.spinner("Running backup..."):
+            result = main(send_email_flag=send_email_flag)
+            if isinstance(result, dict):
+                if result.get("success"):
+                    st.success(result.get("message"))
                 else:
-                    st.error("Unexpected result from backup script.")
+                    st.error(result.get("message"))
+            else:
+                st.error("Unexpected result from backup script.")
 
     st.markdown("<br><br>", unsafe_allow_html=True)
     st.subheader("📊 Daily Backup Size Chart")
@@ -129,7 +109,7 @@ if page == "📊 Overview":
                 x="Date",
                 y="Total Size (KB)",
                 title="Daily Backup Size Chart",
-                labels={"Date": "Date", "Total Size (KB)": "Size (KB)"},
+                labels={"Date": "Date", "Total Size (KB)": "Backup Size (KB)"},
                 text_auto='.2f'
             )
             fig.update_layout(xaxis_title="Date", yaxis_title="Backup Size (KB)", height=400)
