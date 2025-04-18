@@ -76,7 +76,7 @@ def get_backup_size_trend_from_github():
                 ts_raw = name.replace("codeanalyzer_", "").replace(".zip", "")
                 try:
                     dt = datetime.strptime(ts_raw, "%Y-%m-%d_%I-%M%p")
-                    date_key = dt.date().isoformat()
+                    date_key = dt.isoformat()
                     size_kb = round(size / 1024, 2)
                     data[date_key] = data.get(date_key, 0) + size_kb
                 except:
@@ -108,25 +108,56 @@ if page == "📊 Overview":
     st.markdown("<br><br>", unsafe_allow_html=True)
     st.subheader("📊 Daily Backup Size Chart")
     trend_df = get_backup_size_trend_from_github()
+    # if not trend_df.empty:
+    #     try:
+    #         import plotly.express as px
+    #         trend_df["Date"] = pd.to_datetime(trend_df["Date"])
+    #         fig = px.bar(
+    #             trend_df,
+    #             y="Date",
+    #             x="Total Size (KB)",
+    #             orientation="v",
+    #             title="Daily Backup Size Chart",
+    #             labels={"Total Size (KB)": "Size (KB)", "Date": "Backup Date"},
+    #             text="Total Size (KB)"
+    #         )
+    #         fig.update_layout(yaxis_title="Date", xaxis_title="Size (KB)", height=400)
+    #         st.plotly_chart(fig, use_container_width=True)
+    #     except Exception as e:
+    #         st.warning(f"Chart rendering failed: {e}")
+    # else:
+    #     st.info("No data yet to display trend chart.")
     if not trend_df.empty:
         try:
             import plotly.express as px
+
+            # Ensure Date is datetime type and sorted
             trend_df["Date"] = pd.to_datetime(trend_df["Date"])
+            trend_df = trend_df.sort_values("Date")
+
             fig = px.bar(
                 trend_df,
-                y="Date",
-                x="Total Size (KB)",
+                x="Date",
+                y="Total Size (KB)",
                 orientation="v",
-                title="Daily Backup Size Chart",
-                labels={"Total Size (KB)": "Size (KB)", "Date": "Backup Date"},
-                text="Total Size (KB)"
+                title="📊 Daily Backup Size Chart",
+                labels={"Total Size (KB)": "Size", "Date": "Backup Date"},
+                text="Total Size (KB)",
             )
-            fig.update_layout(yaxis_title="Date", xaxis_title="Size (KB)", height=400)
+
+            # Optional formatting
+            fig.update_layout(
+                xaxis_title="Date",
+                yaxis_title="Backup Size (KB)",
+                height=450,
+                xaxis_tickformat="%b %d\n%I:%M %p"  # e.g., Apr 18\n09:08 AM
+            )
+            fig.update_traces(textposition="outside")
+
             st.plotly_chart(fig, use_container_width=True)
         except Exception as e:
             st.warning(f"Chart rendering failed: {e}")
-    else:
-        st.info("No data yet to display trend chart.")
+
 
 elif page == "📁 Latest Backup Info":
     st.markdown("## 📁 Latest Backup Info")
