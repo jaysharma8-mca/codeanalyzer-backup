@@ -35,6 +35,7 @@ logging.basicConfig(
 # ===== UTILITY FUNCTIONS =====
 
 def fetch_ngrok_tunnel():
+    """Fetch Ngrok tunnel dynamically"""
     try:
         res = requests.get("http://127.0.0.1:4040/api/tunnels")
         tunnels = res.json().get("tunnels", [])
@@ -49,14 +50,17 @@ def fetch_ngrok_tunnel():
     return None, None
 
 def generate_timestamped_folder_name():
+    """Generate timestamped folder name for the backup"""
     return f"codeanalyzer_{datetime.datetime.now().strftime('%Y-%m-%d_%I-%M%p')}"
 
 def create_destination_folder(base_path, folder_name):
+    """Create backup folder if not exists"""
     full_path = os.path.join(base_path, folder_name)
     os.makedirs(full_path, exist_ok=True)
     return full_path
 
 def scp_transfer(host, port, username, password, linux_path, windows_dest):
+    """Transfer files from Linux to Windows using SCP"""
     for attempt in range(3):
         try:
             ssh = paramiko.SSHClient()
@@ -72,6 +76,7 @@ def scp_transfer(host, port, username, password, linux_path, windows_dest):
     return False
 
 def get_linux_folder_size(host, port, username, password):
+    """Get the size of the Linux folder"""
     try:
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -85,6 +90,7 @@ def get_linux_folder_size(host, port, username, password):
         return "N/A"
 
 def get_windows_folder_size(path):
+    """Get the size of the Windows folder"""
     total = 0
     for dirpath, _, filenames in os.walk(path):
         for f in filenames:
@@ -93,6 +99,7 @@ def get_windows_folder_size(path):
     return total  # bytes
 
 def format_windows_size(size_in_bytes, linux_size_unit):
+    """Format the Windows folder size"""
     if linux_size_unit.endswith('K'):
         return f"{round(size_in_bytes / 1024, 2)} KB"
     elif linux_size_unit.endswith('M'):
@@ -101,6 +108,7 @@ def format_windows_size(size_in_bytes, linux_size_unit):
         return f"{round(size_in_bytes / 1024, 2)} KB"
 
 def send_email(sender, receivers, password, subject, body, smtp_server, smtp_port):
+    """Send email notification after backup completion"""
     msg = MIMEText(body, "html")
     msg["Subject"] = subject
     msg["From"] = sender
@@ -111,6 +119,7 @@ def send_email(sender, receivers, password, subject, body, smtp_server, smtp_por
         server.sendmail(sender, receivers, msg.as_string())
 
 def upload_zip_to_github(zip_path):
+    """Upload the backup zip to GitHub"""
     GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
     GITHUB_REPO = os.getenv("GITHUB_REPO")
     GITHUB_BRANCH = os.getenv("GITHUB_BRANCH", "main")
@@ -163,6 +172,7 @@ def main(send_email_flag=True):
     result = {"success": False, "message": ""}
     logging.info(">>> Starting backup process...")
 
+    # Fetch ngrok tunnel dynamically
     host, port = fetch_ngrok_tunnel()
     if not host or not port:
         result["message"] = "❌ Ngrok TCP tunnel not found. Is Ngrok running?"
@@ -173,23 +183,28 @@ def main(send_email_flag=True):
         destination_path = create_destination_folder(WINDOWS_BACKUP_BASE, folder_name)
         logging.info(f"Created backup folder: {destination_path}")
 
+        # SCP transfer
         if not scp_transfer(host, port, USERNAME, PASSWORD, LINUX_FOLDER, destination_path):
             result["message"] = "❌ SCP transfer failed after 3 retries."
             return result
 
+        # Create zip archive
         zip_file = shutil.make_archive(destination_path, 'zip', destination_path)
         logging.info(f"Created zip archive: {zip_file}")
 
+        # Upload zip to GitHub
         if not upload_zip_to_github(zip_file):
             result["message"] = "❌ GitHub upload failed via API."
             return result
 
+        # Get Linux and Windows folder sizes
         linux_size = get_linux_folder_size(host, port, USERNAME, PASSWORD)
         win_bytes = get_windows_folder_size(os.path.join(destination_path, 'src'))
         win_size = format_windows_size(win_bytes, linux_size)
         logging.info(f"Linux folder size  : {linux_size}")
         logging.info(f"Windows folder size: {win_size}")
 
+        # Send email if requested
         if send_email_flag:
             try:
                 email_subject = "CodeAnalyzer Backup Successful"
