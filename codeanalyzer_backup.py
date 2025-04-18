@@ -128,7 +128,8 @@ PORT = 2222
 USERNAME = 'jay'
 PASSWORD = '5570'
 LINUX_FOLDER = f'/home/{USERNAME}/codeanalyzer/src'
-WINDOWS_BACKUP_BASE = r'D:\Ansu\codeanalyzer-backups'
+# WINDOWS_BACKUP_BASE = r'D:\Ansu\codeanalyzer-backups'
+WINDOWS_BACKUP_BASE = os.path.join(os.path.dirname(__file__), "codeanalyzer-backups")
 SENDER_EMAIL = "jaysharma155.cmpica@gmail.com"
 RECEIVER_EMAILS = [
     "jaysharma155.cmpicamca15@gmail.com",
