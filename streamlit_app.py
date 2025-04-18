@@ -13,8 +13,11 @@ from codeanalyzer_backup import main, WINDOWS_BACKUP_BASE
 st.set_page_config(page_title="CodeAnalyzer Backup Dashboard", layout="wide")
 
 # Sidebar Navigation with Logo
-st.sidebar.image(os.path.join("D:/Ansu", "amdocs-logo_brandlogos.net_dpyzc-1.png"), width=150)
-st.sidebar.title("Navigation")
+st.sidebar.markdown("""
+    <div style='display: flex; justify-content: center;'>
+        <img src='https://upload.wikimedia.org/wikipedia/commons/thumb/6/6b/Meetup_Logo.png/512px-Meetup_Logo.png' width='100'/>
+    </div>
+""", unsafe_allow_html=True)
 page = st.sidebar.radio(" ", ["📊 Overview", "📁 Latest Backup Info", "📂 Contents of Latest Backup"])
 
 # Define absolute path to log file
